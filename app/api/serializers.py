@@ -2,7 +2,6 @@ import sympy as sp
 import numpy as np
 
 from rest_framework import serializers
-
 from app.models import DifferentialEq
 
 
@@ -40,77 +39,86 @@ class DifferentialEqSerializer(serializers.ModelSerializer):
         if data['b'] <= data['x0']:
             raise serializers.ValidationError("'b' must be greater than 'x0'.")
         return data
+    
+    def _get_euler_results(self, obj):
+        if not hasattr(self, '_euler_cache'):
+            self._euler_cache = {}
+
+        key = (obj.func, obj.x0, obj.y0, obj.h, obj.b)
+        if key not in self._euler_cache:
+            self._euler_cache[key] = self.euler_method(obj.func, obj.x0, obj.y0, obj.h, obj.b)
+        return self._euler_cache[key]
+
+    def _get_euler_cauchy_results(self, obj):
+        if not hasattr(self, '_euler_cauchy_cache'):
+            self._euler_cauchy_cache = {}
+
+        key = (obj.func, obj.x0, obj.y0, obj.h, obj.b)
+        if key not in self._euler_cauchy_cache:
+            self._euler_cauchy_cache[key] = self.euler_cauchy_method(obj.func, obj.x0, obj.y0, obj.h, obj.b)
+        return self._euler_cauchy_cache[key]
+
 
     def get_x1_res(self, obj):
         """
         Calculate and return x values for Euler method.
         """
-        func = obj.func
-        x0, y0, h, b = obj.x0, obj.y0, obj.h, obj.b
-
-        return self.euler_method(func, x0, y0, h, b)[0].tolist()
+        x_vals, _ = self._get_euler_results(obj)
+        return x_vals.tolist()
 
     def get_y1_res(self, obj):
         """
         Calculate and return y values for numerical methods.
         """
-        func = obj.func
-        x0, y0, h, b = obj.x0, obj.y0, obj.h, obj.b
-
-        return self.euler_method(func, x0, y0, h, b)[1].tolist()
+        _, y_vals = self._get_euler_results(obj)
+        return y_vals.tolist()
     
     def get_x2_res(self, obj):
         """
-        Calculate and return x values for Euler-Cauchy method.
+        Calculate and return x values for Euler Method.
         """
-        func = obj.func
-        x0, y0, h, b = obj.x0, obj.y0, obj.h, obj.b
-
-        return self.euler_cauchy_method(func, x0, y0, h, b)[0].tolist()
+        x_vals, _ = self._get_euler_cauchy_results(obj)
+        return x_vals.tolist()
 
     def get_y2_res(self, obj):
         """
-        Calculate and return y values for for Euler-Cauchy method.
+        Calculate and return y values for for Euler-Cauchy Method.
         """
-        func = obj.func
-        x0, y0, h, b = obj.x0, obj.y0, obj.h, obj.b
+        _, y_vals = self._get_euler_cauchy_results(obj)
+        return y_vals.tolist()
 
-        return self.euler_cauchy_method(func, x0, y0, h, b)[1].tolist()
-
-    def euler_method(self, func: str, x0: float, y0: float, h: float, b: float) -> iter:
+    def euler_method(self, func: str, x0: float, y0: float, h: float, b: float) -> tuple[np.ndarray, np.ndarray]:
         """
         Euler Method implementation.
         """
-        function = sp.sympify(func)
-        x_range = np.arange(x0, b + h, h)
-
-        n = len(x_range)
-
-        y_vals = np.zeros(n)
+        symbolic_expr = sp.sympify(func)
+        f = sp.lambdify((x, y), symbolic_expr, "numpy")
+        
+        n_steps = int(np.ceil((b - x0) / h)) + 1
+        x_range = np.linspace(x0, x0 + h * (n_steps - 1), n_steps)
+        
+        y_vals = np.zeros(n_steps)
         y_vals[0] = y0
 
-        for i in range(1, n):
-            y_vals[i] = y_vals[i - 1] + h * (function.subs({x: x_range[i - 1], y: y_vals[i - 1]}))
+        for i in range(1, n_steps):
+            y_vals[i] = y_vals[i - 1] + h * f(x_range[i - 1], y_vals[i - 1])
+        return (x_range, y_vals)
 
-        return (x_range, y_vals)     
-
-    def euler_cauchy_method(self, func: str, x0: float, y0: float, h: float, b: float) -> iter:
+    def euler_cauchy_method(self, func: str, x0: float, y0: float, h: float, b: float) -> tuple[np.ndarray, np.ndarray]:
         """
         Euler-Cauchy Method implementation.
         """
-        function = sp.sympify(func)
-        x_range = np.arange(x0, b + h, h)
-
-        n = len(x_range)
-
-        y_vals = np.zeros(n)
+        symbolic_expr = sp.sympify(func)
+        f = sp.lambdify((x, y), symbolic_expr, "numpy")
+        
+        n_steps = int(np.ceil((b - x0) / h)) + 1
+        x_range = np.linspace(x0, x0 + h * (n_steps - 1), n_steps)
+        
+        y_vals = np.zeros(n_steps)
         y_vals[0] = y0
 
-        for i in range(1, n):
-            f1 = function.subs({x: x_range[i - 1], y: y_vals[i - 1]})
-            f2 = function.subs({x: x_range[i], y: (y_vals[i - 1] + h * f1)})
-
+        for i in range(1, n_steps):
+            f1 = f(x_range[i - 1], y_vals[i - 1])
+            f2 = f(x_range[i], y_vals[i - 1] + h * f1)
             y_vals[i] = y_vals[i - 1] + (h / 2) * (f1 + f2)
-
-            
-        return (x_range, y_vals)  
+        return (x_range, y_vals)
