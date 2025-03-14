@@ -58,7 +58,6 @@ class DifferentialEqSerializer(serializers.ModelSerializer):
             self._euler_cauchy_cache[key] = self.euler_cauchy_method(obj.func, obj.x0, obj.y0, obj.h, obj.b)
         return self._euler_cauchy_cache[key]
 
-
     def get_x1_res(self, obj):
         """
         Calculate and return x values for Euler method.
