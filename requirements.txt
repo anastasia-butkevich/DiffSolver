@@ -5,3 +5,4 @@ sympy
 numpy
 requests
 matplotlib
+python-dotenv
